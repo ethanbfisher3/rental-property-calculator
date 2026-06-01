@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import './App.css';
 import { calculateResults } from './utils/calculations';
@@ -29,6 +29,17 @@ const defaultInputs = {
   rentGrowthPct: 2,
 };
 
+const STORAGE_KEY = 'rental-property-deals';
+
+function loadDeals() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
 function fmt(value) {
   if (!isFinite(value) || isNaN(value)) return '$—';
   return new Intl.NumberFormat('en-US', {
@@ -49,15 +60,15 @@ function quality(value, good, ok) {
   return 'bad';
 }
 
-// Tooltip that renders via portal so it's never clipped by overflow:hidden parents
+// Portal tooltip — never clipped by overflow:hidden ancestors
 function Info({ text }) {
   const [pos, setPos] = useState(null);
   const ref = useRef(null);
 
   const onEnter = useCallback(() => {
     if (ref.current) {
-      const r = ref.current.getBoundingClientRect();
-      setPos({ x: r.left + r.width / 2, y: r.top });
+      const rect = ref.current.getBoundingClientRect();
+      setPos({ x: rect.left + rect.width / 2, y: rect.top });
     }
   }, []);
 
@@ -65,20 +76,12 @@ function Info({ text }) {
 
   return (
     <>
-      <span
-        ref={ref}
-        className="info-icon"
-        onMouseEnter={onEnter}
-        onMouseLeave={onLeave}
-      >
+      <span ref={ref} className="info-icon" onMouseEnter={onEnter} onMouseLeave={onLeave}>
         i
       </span>
       {pos &&
         createPortal(
-          <div
-            className="tooltip-box"
-            style={{ left: pos.x, top: pos.y }}
-          >
+          <div className="tooltip-box" style={{ left: pos.x, top: pos.y }}>
             {text}
           </div>,
           document.body
@@ -92,14 +95,14 @@ function Section({ title, icon, children, defaultOpen = true }) {
   return (
     <div className="section">
       <button
-        className={`section-header ${open ? '' : 'section-header-closed'}`}
+        className={`section-header${open ? '' : ' section-header-closed'}`}
         onClick={() => setOpen(o => !o)}
       >
         <span className="section-title">
           <span className="section-icon">{icon}</span>
           {title}
         </span>
-        <span className={`chevron ${open ? 'open' : ''}`}>›</span>
+        <span className={`chevron${open ? ' open' : ''}`}>›</span>
       </button>
       {open && <div className="section-body">{children}</div>}
     </div>
@@ -176,20 +179,29 @@ function ResRow({ label, value, hint, income, expense, total, big }) {
 
 export default function App() {
   const [inputs, setInputs] = useState(defaultInputs);
+  const [deals, setDeals] = useState(loadDeals);
+  const [activeDealId, setActiveDealId] = useState(null);
 
-  const set = (key, val) => setInputs(p => ({ ...p, [key]: val }));
+  // Save modal state
+  const [saveModal, setSaveModal] = useState(false);
+  const [dealName, setDealName] = useState('');
+  const [dealNotes, setDealNotes] = useState('');
+  const [editingId, setEditingId] = useState(null); // non-null = editing existing deal
 
-  const addRoom = () => {
-    const nextId = Math.max(0, ...inputs.rooms.map(r => r.id)) + 1;
-    set('rooms', [...inputs.rooms, { id: nextId, name: `Unit ${nextId}`, monthlyRent: 1000 }]);
-  };
+  // Notes panel for loaded deal
+  const [notesOpen, setNotesOpen] = useState(false);
 
-  const removeRoom = id => {
-    if (inputs.rooms.length > 1) set('rooms', inputs.rooms.filter(r => r.id !== id));
-  };
+  const [toast, setToast] = useState(null);
+  const toastTimerRef = useRef(null);
 
-  const updateRoom = (id, field, val) =>
-    set('rooms', inputs.rooms.map(r => (r.id === id ? { ...r, [field]: val } : r)));
+  // Sync deals to localStorage on every change
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(deals));
+    } catch (e) {
+      console.error('localStorage write failed', e);
+    }
+  }, [deals]);
 
   const r = useMemo(() => calculateResults(inputs), [inputs]);
 
@@ -199,24 +211,197 @@ export default function App() {
   const dscrQ = quality(r.dscr, 1.25, 1.0);
   const beoQ = r.breakEvenOccupancy <= 70 ? 'good' : r.breakEvenOccupancy <= 85 ? 'ok' : 'bad';
 
+  const set = (key, val) => {
+    setInputs(p => ({ ...p, [key]: val }));
+    setActiveDealId(null); // mark as unsaved on any input change
+  };
+
+  const addRoom = () => {
+    const nextId = Math.max(0, ...inputs.rooms.map(rr => rr.id)) + 1;
+    set('rooms', [...inputs.rooms, { id: nextId, name: `Unit ${nextId}`, monthlyRent: 1000 }]);
+  };
+
+  const removeRoom = id => {
+    if (inputs.rooms.length > 1)
+      set('rooms', inputs.rooms.filter(rr => rr.id !== id));
+  };
+
+  const updateRoom = (id, field, val) =>
+    set('rooms', inputs.rooms.map(rr => (rr.id === id ? { ...rr, [field]: val } : rr)));
+
+  const showToast = msg => {
+    clearTimeout(toastTimerRef.current);
+    setToast(msg);
+    toastTimerRef.current = setTimeout(() => setToast(null), 2500);
+  };
+
+  // Open save modal (new deal)
+  const openSaveModal = () => {
+    setEditingId(null);
+    setDealName('');
+    setDealNotes('');
+    setSaveModal(true);
+  };
+
+  // Open edit modal for existing deal's name/notes
+  const openEditModal = (deal, e) => {
+    e.stopPropagation();
+    setEditingId(deal.id);
+    setDealName(deal.name);
+    setDealNotes(deal.notes || '');
+    setSaveModal(true);
+  };
+
+  const commitSave = () => {
+    const name = dealName.trim();
+    if (!name) return;
+
+    if (editingId) {
+      // Update existing deal name/notes only
+      setDeals(prev =>
+        prev.map(d => d.id === editingId ? { ...d, name, notes: dealNotes.trim() } : d)
+      );
+      showToast('Deal updated');
+    } else {
+      // Save current inputs as a new deal
+      const newDeal = {
+        id: `deal_${Date.now()}`,
+        name,
+        notes: dealNotes.trim(),
+        savedAt: new Date().toISOString(),
+        inputs: { ...inputs },
+        snapshot: {
+          cf: r.monthlyCashFlow,
+          coc: r.cashOnCash,
+          capRate: r.capRate,
+        },
+      };
+      setDeals(prev => [newDeal, ...prev]);
+      setActiveDealId(newDeal.id);
+      showToast(`"${name}" saved`);
+    }
+
+    setSaveModal(false);
+    setDealName('');
+    setDealNotes('');
+    setEditingId(null);
+  };
+
+  const loadDeal = deal => {
+    setInputs(deal.inputs);
+    setActiveDealId(deal.id);
+    setNotesOpen(deal.notes ? true : false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    showToast(`Loaded "${deal.name}"`);
+  };
+
+  const deleteDeal = (id, e) => {
+    e.stopPropagation();
+    setDeals(prev => prev.filter(d => d.id !== id));
+    if (activeDealId === id) setActiveDealId(null);
+    showToast('Deal deleted');
+  };
+
+  const activeDeal = deals.find(d => d.id === activeDealId);
+
   return (
     <div className="app">
+      {/* ── HEADER ── */}
       <header className="app-header">
         <div className="header-inner">
           <div className="header-text">
             <h1>Rental Property Analyzer</h1>
             <p>Real-time cash flow, returns, and investment metrics</p>
           </div>
-          <div className={`header-cf header-cf-${cfQ}`}>
-            <div className="header-cf-num">{fmt(r.monthlyCashFlow)}/mo</div>
-            <div className="header-cf-label">Net Cash Flow</div>
+          <div className="header-actions">
+            <button className="btn-save" onClick={openSaveModal}>
+              Save Deal
+            </button>
+            <div className={`header-cf header-cf-${cfQ}`}>
+              <div className="header-cf-num">{fmt(r.monthlyCashFlow)}/mo</div>
+              <div className="header-cf-label">Net Cash Flow</div>
+            </div>
           </div>
         </div>
       </header>
 
+      {/* ── SAVED DEALS BAR ── */}
+      {deals.length > 0 && (
+        <div className="deals-bar">
+          <span className="deals-bar-label">Saved Deals</span>
+          <div className="deals-scroll">
+            {deals.map(deal => {
+              const isActive = deal.id === activeDealId;
+              const cfPos = deal.snapshot.cf >= 0;
+              return (
+                <div
+                  key={deal.id}
+                  className={`deal-card${isActive ? ' deal-card-active' : ''}`}
+                  onClick={() => loadDeal(deal)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={e => e.key === 'Enter' && loadDeal(deal)}
+                >
+                  <div className="deal-card-name">{deal.name}</div>
+                  <div className={`deal-card-cf ${cfPos ? 'pos' : 'neg'}`}>
+                    {fmt(deal.snapshot.cf)}/mo
+                  </div>
+                  <div className="deal-card-stats">
+                    CoC {pct(deal.snapshot.coc)} · Cap {pct(deal.snapshot.capRate)}
+                  </div>
+                  {deal.notes && (
+                    <div className="deal-card-note-icon" title={deal.notes}>📝</div>
+                  )}
+                  <div className="deal-card-actions">
+                    <button
+                      className="deal-edit"
+                      onClick={e => openEditModal(deal, e)}
+                      title="Edit name / notes"
+                    >
+                      ✎
+                    </button>
+                    <button
+                      className="deal-delete"
+                      onClick={e => deleteDeal(deal.id, e)}
+                      title="Delete deal"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="layout">
         {/* ── INPUTS ── */}
         <div className="inputs-col">
+
+          {/* Active deal banner + notes */}
+          {activeDeal && (
+            <div className="active-deal-banner">
+              <div className="active-deal-info">
+                <span className="active-deal-dot" />
+                <span className="active-deal-name">{activeDeal.name}</span>
+                {activeDeal.notes && (
+                  <button
+                    className="active-deal-notes-toggle"
+                    onClick={() => setNotesOpen(o => !o)}
+                  >
+                    {notesOpen ? 'Hide notes' : 'Show notes'}
+                  </button>
+                )}
+              </div>
+              <button className="btn-save-small" onClick={openSaveModal}>
+                Save as new
+              </button>
+            </div>
+          )}
+          {activeDeal && notesOpen && activeDeal.notes && (
+            <div className="active-deal-notes">{activeDeal.notes}</div>
+          )}
 
           <Section title="Purchase Price" icon="🏡">
             <Field
@@ -462,11 +647,7 @@ export default function App() {
                   wide
                 />
                 <div className="calc-rows">
-                  <CalcRow
-                    label="Monthly Management Fee"
-                    value={`−${fmt(r.propertyManagementMonthly)}`}
-                    expense
-                  />
+                  <CalcRow label="Monthly Management Fee" value={`−${fmt(r.propertyManagementMonthly)}`} expense />
                 </div>
               </div>
             )}
@@ -530,10 +711,7 @@ export default function App() {
 
           <div className="card">
             <h3>Investment Summary</h3>
-            <ResRow
-              label="Purchase Price"
-              value={fmt(inputs.purchasePrice)}
-            />
+            <ResRow label="Purchase Price" value={fmt(inputs.purchasePrice)} />
             <ResRow
               label={`Down Payment (${pct(inputs.downPaymentPct)})`}
               hint="Your upfront equity in the property. This plus the loan equals the purchase price."
@@ -730,6 +908,62 @@ export default function App() {
           </p>
         </div>
       </div>
+
+      {/* ── SAVE MODAL ── */}
+      {saveModal &&
+        createPortal(
+          <div className="modal-overlay" onClick={() => setSaveModal(false)}>
+            <div className="modal" onClick={e => e.stopPropagation()}>
+              <h2>{editingId ? 'Edit Deal' : 'Save This Deal'}</h2>
+              <p className="modal-sub">
+                {editingId
+                  ? 'Update the name or notes for this saved deal.'
+                  : 'Give this analysis a name so you can compare it later.'}
+              </p>
+              <label className="modal-label">Deal Name</label>
+              <input
+                className="modal-input"
+                type="text"
+                placeholder="e.g. 123 Main St — 3-unit duplex"
+                value={dealName}
+                onChange={e => setDealName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && commitSave()}
+                autoFocus
+                maxLength={80}
+              />
+              <label className="modal-label">
+                Notes <span className="modal-label-opt">(optional)</span>
+              </label>
+              <textarea
+                className="modal-textarea"
+                placeholder="Address, seller contact, inspection findings, neighborhood notes, anything you want to remember..."
+                value={dealNotes}
+                onChange={e => setDealNotes(e.target.value)}
+                rows={4}
+                maxLength={2000}
+              />
+              <div className="modal-actions">
+                <button className="btn-secondary" onClick={() => setSaveModal(false)}>
+                  Cancel
+                </button>
+                <button
+                  className="btn-primary"
+                  onClick={commitSave}
+                  disabled={!dealName.trim()}
+                >
+                  {editingId ? 'Update' : 'Save Deal'}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* ── TOAST ── */}
+      {toast && createPortal(
+        <div className="toast">{toast}</div>,
+        document.body
+      )}
     </div>
   );
 }

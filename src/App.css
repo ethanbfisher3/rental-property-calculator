@@ -576,6 +576,415 @@ body {
   padding: 0 2px 8px;
 }
 
+/* ── HEADER ACTIONS ── */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.btn-save {
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  border: 1.5px solid rgba(255,255,255,0.35);
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.btn-save:hover {
+  background: rgba(255,255,255,0.25);
+  border-color: rgba(255,255,255,0.6);
+}
+
+/* ── DEALS BAR ── */
+.deals-bar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 32px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  overflow: hidden;
+}
+
+.deals-bar-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.deals-scroll {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: #dde3ec transparent;
+}
+
+.deals-scroll::-webkit-scrollbar {
+  height: 4px;
+}
+
+.deals-scroll::-webkit-scrollbar-thumb {
+  background: #dde3ec;
+  border-radius: 2px;
+}
+
+.deal-card {
+  flex-shrink: 0;
+  background: #f8fafc;
+  border: 1.5px solid var(--border);
+  border-radius: 9px;
+  padding: 8px 10px 8px 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 150px;
+  max-width: 200px;
+  text-align: left;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+  position: relative;
+}
+
+.deal-card:hover {
+  border-color: var(--blue);
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(37,99,235,0.12);
+}
+
+.deal-card-active {
+  border-color: var(--blue) !important;
+  background: var(--blue-light) !important;
+  box-shadow: 0 2px 8px rgba(37,99,235,0.15);
+}
+
+.deal-card-name {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 36px; /* space for action buttons */
+}
+
+.deal-card-cf {
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.deal-card-cf.pos { color: var(--green); }
+.deal-card-cf.neg { color: var(--red); }
+
+.deal-card-stats {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.deal-card-note-icon {
+  font-size: 0.75rem;
+  position: absolute;
+  bottom: 8px;
+  left: 12px;
+}
+
+.deal-card-actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.deal-card:hover .deal-card-actions,
+.deal-card-active .deal-card-actions {
+  opacity: 1;
+}
+
+.deal-edit,
+.deal-delete {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s, color 0.1s;
+  color: var(--muted);
+  padding: 0;
+}
+
+.deal-edit:hover {
+  background: #e0e7ff;
+  color: var(--blue);
+}
+
+.deal-delete:hover {
+  background: var(--red-light);
+  color: var(--red);
+}
+
+/* ── ACTIVE DEAL BANNER ── */
+.active-deal-banner {
+  background: var(--blue-light);
+  border: 1.5px solid #bfdbfe;
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.active-deal-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.active-deal-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--blue);
+  flex-shrink: 0;
+}
+
+.active-deal-name {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--blue);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.active-deal-notes-toggle {
+  background: none;
+  border: none;
+  color: var(--blue);
+  font-size: 0.78rem;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.active-deal-notes-toggle:hover {
+  opacity: 0.75;
+}
+
+.btn-save-small {
+  background: var(--blue);
+  color: #fff;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+
+.btn-save-small:hover {
+  opacity: 0.85;
+}
+
+.active-deal-notes {
+  background: var(--blue-light);
+  border: 1.5px solid #bfdbfe;
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  padding: 10px 14px;
+  font-size: 0.83rem;
+  color: #334155;
+  white-space: pre-wrap;
+  line-height: 1.55;
+  margin-top: -2px; /* overlap with banner */
+}
+
+/* ── MODAL ── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15,23,42,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 20px;
+}
+
+.modal {
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 28px 28px 24px;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+}
+
+.modal h2 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.modal-sub {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 20px;
+}
+
+.modal-label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 6px;
+}
+
+.modal-label-opt {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.78rem;
+}
+
+.modal-input {
+  width: 100%;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.95rem;
+  color: var(--text);
+  outline: none;
+  margin-bottom: 16px;
+  transition: border-color 0.15s;
+  font-family: inherit;
+}
+
+.modal-input:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+}
+
+.modal-textarea {
+  width: 100%;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.88rem;
+  color: var(--text);
+  outline: none;
+  margin-bottom: 22px;
+  transition: border-color 0.15s;
+  font-family: inherit;
+  resize: vertical;
+  line-height: 1.55;
+  min-height: 90px;
+}
+
+.modal-textarea:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.btn-primary {
+  background: var(--blue);
+  color: #fff;
+  border: none;
+  padding: 10px 22px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  font-family: inherit;
+}
+
+.btn-primary:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.btn-secondary {
+  background: none;
+  color: var(--muted);
+  border: 1.5px solid var(--border);
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  font-family: inherit;
+}
+
+.btn-secondary:hover {
+  border-color: #94a3b8;
+  color: var(--text);
+}
+
+/* ── TOAST ── */
+.toast {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1e293b;
+  color: #f1f5f9;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  z-index: 10001;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  white-space: nowrap;
+  animation: toast-in 0.2s ease;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
 /* ── INFO ICONS & TOOLTIPS ── */
 .info-icon {
   display: inline-flex;
