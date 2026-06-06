@@ -1,13 +1,33 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import './App.css';
-import { calculateResults } from './utils/calculations';
+import { calculateResults, calculateLoanPayment, calculateLoanBalance } from './utils/calculations';
+
+const LOAN_TYPES = [
+  { value: 'conventional', label: 'Conventional' },
+  { value: 'private', label: 'Private Lender' },
+  { value: 'hard_money', label: 'Hard Money' },
+  { value: 'bridge', label: 'Bridge Loan' },
+  { value: 'heloc', label: 'HELOC' },
+  { value: 'seller', label: 'Seller Financing' },
+  { value: 'other', label: 'Other' },
+];
 
 const defaultInputs = {
   purchasePrice: 350000,
-  downPaymentPct: 20,
-  interestRate: 7.25,
-  loanTermYears: 30,
+  loans: [
+    {
+      id: 'loan-default',
+      name: 'Bank Loan',
+      type: 'conventional',
+      amount: 280000,
+      interestRate: 7.25,
+      termYears: 30,
+      startMonth: 0,
+      payoffMonth: null,
+      isInterestOnly: false,
+    },
+  ],
   closingCostsPct: 3,
   buyerAgentPct: 2.5,
   inspectionCost: 500,
@@ -40,6 +60,28 @@ function loadDeals() {
   }
 }
 
+function migrateInputs(inputs) {
+  if (inputs.loans && inputs.loans.length > 0) return inputs;
+  const price = parseFloat(inputs.purchasePrice) || 0;
+  const downPct = parseFloat(inputs.downPaymentPct) || 20;
+  return {
+    ...inputs,
+    loans: [
+      {
+        id: 'loan_migrated',
+        name: 'Mortgage',
+        type: 'conventional',
+        amount: Math.round(price * (1 - downPct / 100)),
+        interestRate: parseFloat(inputs.interestRate) || 7.25,
+        termYears: parseFloat(inputs.loanTermYears) || 30,
+        startMonth: 0,
+        payoffMonth: null,
+        isInterestOnly: false,
+      },
+    ],
+  };
+}
+
 function fmt(value) {
   if (!isFinite(value) || isNaN(value)) return '$—';
   return new Intl.NumberFormat('en-US', {
@@ -60,7 +102,6 @@ function quality(value, good, ok) {
   return 'bad';
 }
 
-// Portal tooltip — never clipped by overflow:hidden ancestors
 function Info({ text }) {
   const [pos, setPos] = useState(null);
   const ref = useRef(null);
@@ -177,24 +218,199 @@ function ResRow({ label, value, hint, income, expense, total, big }) {
   );
 }
 
+// ── TUTORIAL MODAL ──────────────────────────────────────────────────────────
+
+function TutorialModal({ onClose }) {
+  return createPortal(
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="tutorial-modal" onClick={e => e.stopPropagation()}>
+        <div className="tutorial-header">
+          <div>
+            <h2>Multiple Loans &amp; Refinancing Guide</h2>
+            <p className="tutorial-subtitle">Model complex financing: private lenders, bank loans, and future refinances</p>
+          </div>
+          <button className="tutorial-close-btn" onClick={onClose}>×</button>
+        </div>
+
+        <div className="tutorial-body">
+
+          <div className="tutorial-section">
+            <div className="tutorial-step-badge">1</div>
+            <div className="tutorial-step-content">
+              <h3>Why Use Multiple Loans?</h3>
+              <p>Real estate investors rarely use a single lender. Common combinations include:</p>
+              <ul>
+                <li><strong>Bank + Private Lender:</strong> A bank covers 70–75%, a private lender covers another 10–15%, reducing your out-of-pocket down payment.</li>
+                <li><strong>Hard Money → Refinance:</strong> A hard money loan funds a quick purchase or rehab, then you refinance into a conventional mortgage once the property stabilizes.</li>
+                <li><strong>Seller Financing:</strong> The seller carries a note for part of the purchase price alongside your bank loan.</li>
+              </ul>
+              <p>This calculator lets you model all of these together and see how your finances change over time.</p>
+            </div>
+          </div>
+
+          <div className="tutorial-section">
+            <div className="tutorial-step-badge">2</div>
+            <div className="tutorial-step-content">
+              <h3>Loan Fields Explained</h3>
+              <dl className="tutorial-fields">
+                <dt>Name</dt>
+                <dd>A label for this loan — e.g., "First National Bank", "Private Lender (Uncle Bob)"</dd>
+                <dt>Type</dt>
+                <dd>The loan category for your reference. Doesn't affect calculations.</dd>
+                <dt>Amount ($)</dt>
+                <dd>The principal you're borrowing from this lender. The down payment is automatically calculated as <em>Purchase Price − sum of all month-0 loans</em>.</dd>
+                <dt>Interest Rate (%)</dt>
+                <dd>Annual rate — e.g., enter <code>10</code> for 10%. Private lenders typically charge 8–15%.</dd>
+                <dt>Term (years)</dt>
+                <dd>How long until this loan fully amortizes. For interest-only or balloon loans, set this to the balloon/payoff period.</dd>
+                <dt>Start Month</dt>
+                <dd><strong>0</strong> = begins at purchase. <strong>24</strong> = begins 2 years after purchase. Use a future start month for refinance loans.</dd>
+                <dt>Payoff Month</dt>
+                <dd>If this loan will be paid off early — e.g., refinanced — enter that month here. Leave blank to let it run its full term. The estimated remaining balance is shown as a hint.</dd>
+                <dt>Interest Only</dt>
+                <dd>Check this if you only pay interest each month (no principal reduction). Common for private lenders and bridge loans. The full balance remains until you sell or refinance.</dd>
+              </dl>
+            </div>
+          </div>
+
+          <div className="tutorial-section">
+            <div className="tutorial-step-badge">3</div>
+            <div className="tutorial-step-content">
+              <h3>Example: Bank Loan + Private Lender</h3>
+              <p>You're buying a <strong>$200,000</strong> duplex. A bank will lend 60% and a private lender covers another 25%:</p>
+              <div className="tutorial-example">
+                <table className="tutorial-ex-table">
+                  <thead>
+                    <tr>
+                      <th>Loan</th>
+                      <th>Amount</th>
+                      <th>Rate</th>
+                      <th>Term</th>
+                      <th>Start</th>
+                      <th>Payoff</th>
+                      <th>IO?</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Bank Loan</td>
+                      <td>$120,000</td>
+                      <td>7.25%</td>
+                      <td>30 yrs</td>
+                      <td>Mo. 0</td>
+                      <td>—</td>
+                      <td>No</td>
+                    </tr>
+                    <tr>
+                      <td>Private Lender</td>
+                      <td>$50,000</td>
+                      <td>10%</td>
+                      <td>5 yrs</td>
+                      <td>Mo. 0</td>
+                      <td>Mo. 24</td>
+                      <td>Yes</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p className="tutorial-example-note">
+                  → Implied down payment: $200,000 − $120,000 − $50,000 = <strong>$30,000 (15%)</strong><br />
+                  → Current monthly debt service = bank P&amp;I + private interest-only payment<br />
+                  → Private lender marked for payoff at month 24 (refinance planned)
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="tutorial-section">
+            <div className="tutorial-step-badge">4</div>
+            <div className="tutorial-step-content">
+              <h3>Example: Adding a Refinance Loan</h3>
+              <p>Continuing from above — at month 24 you refinance both loans into one conventional mortgage.</p>
+              <p><strong>Step 1:</strong> Set the Payoff Month on both existing loans to <code>24</code>.</p>
+              <p><strong>Step 2:</strong> Add a new loan with Start Month <code>24</code>:</p>
+              <div className="tutorial-example">
+                <table className="tutorial-ex-table">
+                  <thead>
+                    <tr>
+                      <th>Loan</th>
+                      <th>Amount</th>
+                      <th>Rate</th>
+                      <th>Term</th>
+                      <th>Start</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Refinance Loan</td>
+                      <td>$172,000</td>
+                      <td>6.75%</td>
+                      <td>30 yrs</td>
+                      <td>Mo. 24</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p className="tutorial-example-note">
+                  → Amount covers: bank balance (~$118k) + private lender ($50k) + refi closing costs (~$4k)<br />
+                  → Check the "Estimated balance at payoff" hint on each old loan to size the refi amount<br />
+                  → The Projections table will show Year 2 as a milestone with the new loan structure
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="tutorial-section">
+            <div className="tutorial-step-badge">5</div>
+            <div className="tutorial-step-content">
+              <h3>How the Calculations Work</h3>
+              <ul>
+                <li><strong>Current cash flow</strong> only includes loans with Start Month = 0. Future loans don't affect current metrics.</li>
+                <li><strong>Down payment</strong> = Purchase Price minus all month-0 loan amounts. If your loans total more than the purchase price, down payment shows as $0.</li>
+                <li><strong>DSCR and Break-even</strong> are based on current (month-0) debt service only.</li>
+                <li><strong>Projections table</strong> automatically adds milestone rows at each loan event year (e.g., Year 2 if a loan payoff is at month 24). The Loan Balance column reflects the total across all active loans at that year.</li>
+                <li><strong>Interest-only loans</strong> keep their full balance in projections until they're paid off or their term ends.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="tutorial-section">
+            <div className="tutorial-step-badge">6</div>
+            <div className="tutorial-step-content">
+              <h3>Pro Tips</h3>
+              <ul>
+                <li>Use the <strong>"Estimated balance at payoff"</strong> hint on any loan with a payoff month set — it tells you exactly how much your refinance loan needs to cover.</li>
+                <li>For a <strong>hard money + refi</strong> scenario: set the hard money loan as interest-only with a payoff month, then add a conventional refinance loan starting at that same month.</li>
+                <li>If you have a <strong>seller carryback</strong>, model it like a private lender with whatever terms you negotiate.</li>
+                <li>Future loans (Start Month &gt; 0) appear in the projections table but don't affect current Cash-on-Cash Return, Cap Rate, or DSCR. These metrics always reflect your month-0 financing.</li>
+                <li>Keep the <strong>total of month-0 loans</strong> below the purchase price to maintain a positive down payment (equity at purchase).</li>
+              </ul>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ── MAIN APP ────────────────────────────────────────────────────────────────
+
 export default function App() {
   const [inputs, setInputs] = useState(defaultInputs);
   const [deals, setDeals] = useState(loadDeals);
   const [activeDealId, setActiveDealId] = useState(null);
 
-  // Save modal state
   const [saveModal, setSaveModal] = useState(false);
   const [dealName, setDealName] = useState('');
   const [dealNotes, setDealNotes] = useState('');
-  const [editingId, setEditingId] = useState(null); // non-null = editing existing deal
+  const [editingId, setEditingId] = useState(null);
 
-  // Notes panel for loaded deal
   const [notesOpen, setNotesOpen] = useState(false);
+  const [tutorialOpen, setTutorialOpen] = useState(false);
 
   const [toast, setToast] = useState(null);
   const toastTimerRef = useRef(null);
 
-  // Sync deals to localStorage on every change
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(deals));
@@ -213,9 +429,10 @@ export default function App() {
 
   const set = (key, val) => {
     setInputs(p => ({ ...p, [key]: val }));
-    setActiveDealId(null); // mark as unsaved on any input change
+    setActiveDealId(null);
   };
 
+  // Room management
   const addRoom = () => {
     const nextId = Math.max(0, ...inputs.rooms.map(rr => rr.id)) + 1;
     set('rooms', [...inputs.rooms, { id: nextId, name: `Unit ${nextId}`, monthlyRent: 1000 }]);
@@ -229,13 +446,36 @@ export default function App() {
   const updateRoom = (id, field, val) =>
     set('rooms', inputs.rooms.map(rr => (rr.id === id ? { ...rr, [field]: val } : rr)));
 
+  // Loan management
+  const addLoan = () => {
+    const newLoan = {
+      id: `loan_${Date.now()}`,
+      name: 'New Loan',
+      type: 'private',
+      amount: 0,
+      interestRate: 10,
+      termYears: 5,
+      startMonth: 0,
+      payoffMonth: null,
+      isInterestOnly: false,
+    };
+    set('loans', [...inputs.loans, newLoan]);
+  };
+
+  const removeLoan = id => {
+    if (inputs.loans.length > 1)
+      set('loans', inputs.loans.filter(l => l.id !== id));
+  };
+
+  const updateLoan = (id, field, val) =>
+    set('loans', inputs.loans.map(l => l.id === id ? { ...l, [field]: val } : l));
+
   const showToast = msg => {
     clearTimeout(toastTimerRef.current);
     setToast(msg);
     toastTimerRef.current = setTimeout(() => setToast(null), 2500);
   };
 
-  // Open save modal (new deal)
   const openSaveModal = () => {
     setEditingId(null);
     setDealName('');
@@ -243,7 +483,6 @@ export default function App() {
     setSaveModal(true);
   };
 
-  // Open edit modal for existing deal's name/notes
   const openEditModal = (deal, e) => {
     e.stopPropagation();
     setEditingId(deal.id);
@@ -257,13 +496,11 @@ export default function App() {
     if (!name) return;
 
     if (editingId) {
-      // Update existing deal name/notes only
       setDeals(prev =>
         prev.map(d => d.id === editingId ? { ...d, name, notes: dealNotes.trim() } : d)
       );
       showToast('Deal updated');
     } else {
-      // Save current inputs as a new deal
       const newDeal = {
         id: `deal_${Date.now()}`,
         name,
@@ -288,7 +525,7 @@ export default function App() {
   };
 
   const loadDeal = deal => {
-    setInputs(deal.inputs);
+    setInputs(migrateInputs(deal.inputs));
     setActiveDealId(deal.id);
     setNotesOpen(deal.notes ? true : false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -304,6 +541,10 @@ export default function App() {
 
   const activeDeal = deals.find(d => d.id === activeDealId);
 
+  // Derived: initial loans (startMonth === 0)
+  const initialLoans = (inputs.loans || []).filter(l => (parseFloat(l.startMonth) || 0) === 0);
+  const futureLoans = (inputs.loans || []).filter(l => (parseFloat(l.startMonth) || 0) > 0);
+
   return (
     <div className="app">
       {/* ── HEADER ── */}
@@ -314,6 +555,10 @@ export default function App() {
             <p>Real-time cash flow, returns, and investment metrics</p>
           </div>
           <div className="header-actions">
+            <button className="btn-tutorial" onClick={() => setTutorialOpen(true)}>
+              <span className="btn-tutorial-full">How It Works</span>
+              <span className="btn-tutorial-short">?</span>
+            </button>
             <button className="btn-save" onClick={openSaveModal}>
               Save Deal
             </button>
@@ -379,7 +624,6 @@ export default function App() {
         {/* ── INPUTS ── */}
         <div className="inputs-col">
 
-          {/* Active deal banner + notes */}
           {activeDeal && (
             <div className="active-deal-banner">
               <div className="active-deal-info">
@@ -415,32 +659,166 @@ export default function App() {
             />
           </Section>
 
+          {/* ── FINANCING / MULTI-LOAN ── */}
           <Section title="Financing" icon="🏦">
-            <div className="grid2">
-              <Field
-                label="Down Payment"
-                hint="Percentage of the purchase price paid upfront. A larger down payment reduces your loan and monthly mortgage, but ties up more cash. Minimum is typically 15–25% for investment properties."
-                value={inputs.downPaymentPct}
-                onChange={v => set('downPaymentPct', v)}
-                suffix="%"
-                step={0.5}
-              />
-              <Field
-                label="Interest Rate"
-                hint="Annual mortgage interest rate. Investment property rates are typically 0.5–1% higher than primary residence rates. Shop multiple lenders — even 0.25% difference saves thousands over 30 years."
-                value={inputs.interestRate}
-                onChange={v => set('interestRate', v)}
-                suffix="%"
-                step={0.125}
-              />
-              <Field
-                label="Loan Term"
-                hint="Length of the mortgage in years. 30 years gives lower monthly payments (better cash flow). 15 years means you pay far less total interest and build equity faster."
-                value={inputs.loanTermYears}
-                onChange={v => set('loanTermYears', v)}
-                suffix="yrs"
-                step={5}
-              />
+            <div className="loans-list">
+              {(inputs.loans || []).map(loan => {
+                const startM = parseFloat(loan.startMonth) || 0;
+                const payoffM = loan.payoffMonth != null ? parseFloat(loan.payoffMonth) : null;
+                const isFuture = startM > 0;
+
+                // Estimated balance at payoff (for hint)
+                let balanceAtPayoff = null;
+                if (payoffM !== null) {
+                  const tempLoan = { ...loan, payoffMonth: null };
+                  balanceAtPayoff = calculateLoanBalance(tempLoan, payoffM);
+                }
+
+                // Monthly payment for this loan
+                const monthlyPmt = calculateLoanPayment(loan);
+
+                return (
+                  <div className={`loan-card${isFuture ? ' loan-card-future' : ''}`} key={loan.id}>
+                    <div className="loan-card-header">
+                      {isFuture && (
+                        <span className="loan-future-badge">Future Loan</span>
+                      )}
+                      <input
+                        className="loan-name-input"
+                        type="text"
+                        value={loan.name}
+                        onChange={e => updateLoan(loan.id, 'name', e.target.value)}
+                        placeholder="Loan name"
+                      />
+                      <select
+                        className="loan-type-select"
+                        value={loan.type}
+                        onChange={e => updateLoan(loan.id, 'type', e.target.value)}
+                      >
+                        {LOAN_TYPES.map(t => (
+                          <option key={t.value} value={t.value}>{t.label}</option>
+                        ))}
+                      </select>
+                      <button
+                        className="loan-remove"
+                        onClick={() => removeLoan(loan.id)}
+                        disabled={inputs.loans.length === 1}
+                        title="Remove this loan"
+                      >
+                        ×
+                      </button>
+                    </div>
+
+                    <div className="loan-card-fields grid3">
+                      <Field
+                        label="Amount"
+                        hint="The principal borrowed from this lender. Down payment is calculated as Purchase Price minus all month-0 loan totals."
+                        prefix="$"
+                        value={loan.amount}
+                        onChange={v => updateLoan(loan.id, 'amount', v)}
+                        step={1000}
+                      />
+                      <Field
+                        label="Interest Rate"
+                        hint="Annual interest rate for this loan. Private lenders typically charge 8–15%. Conventional investment property rates are 0.5–1% higher than primary residence rates."
+                        suffix="%"
+                        value={loan.interestRate}
+                        onChange={v => updateLoan(loan.id, 'interestRate', v)}
+                        step={0.125}
+                      />
+                      <Field
+                        label="Term"
+                        hint="Loan term in years. For balloon/interest-only loans, use the balloon period. For a standard amortizing mortgage, use 15 or 30 years."
+                        suffix="yrs"
+                        value={loan.termYears}
+                        onChange={v => updateLoan(loan.id, 'termYears', v)}
+                        step={1}
+                        min={1}
+                      />
+                    </div>
+
+                    <div className="loan-card-timing grid2">
+                      <div className="field">
+                        <label className="field-label">
+                          Start Month
+                          <Info text="When this loan begins. 0 = at purchase. Enter 24 for a loan that starts 2 years after purchase (e.g. a refinance). Loans with start month > 0 show as 'Future Loans' and don't affect current cash flow." />
+                        </label>
+                        <div className="field-input">
+                          <span className="field-adorn">Mo.</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={loan.startMonth}
+                            onChange={e =>
+                              updateLoan(loan.id, 'startMonth', parseInt(e.target.value) || 0)
+                            }
+                          />
+                          {startM > 0 && (
+                            <span className="field-adorn field-adorn-right">
+                              Yr {(startM / 12).toFixed(1)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="field">
+                        <label className="field-label">
+                          Payoff Month
+                          <Info text="Leave blank to let the loan run its full term. Set a month number if this loan will be paid off early — e.g., when refinancing. The remaining balance at that month is shown below." />
+                        </label>
+                        <div className="field-input">
+                          <span className="field-adorn">Mo.</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            placeholder="never"
+                            value={payoffM === null ? '' : payoffM}
+                            onChange={e => {
+                              const v = e.target.value;
+                              updateLoan(loan.id, 'payoffMonth', v === '' ? null : parseInt(v) || 0);
+                            }}
+                          />
+                          {payoffM !== null && payoffM > 0 && (
+                            <span className="field-adorn field-adorn-right">
+                              Yr {(payoffM / 12).toFixed(1)}
+                            </span>
+                          )}
+                        </div>
+                        {balanceAtPayoff !== null && balanceAtPayoff > 0 && (
+                          <div className="loan-payoff-note">
+                            Estimated balance at payoff: ~{fmt(balanceAtPayoff)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="loan-card-footer">
+                      <label className="checkbox-label loan-io-check">
+                        <input
+                          type="checkbox"
+                          checked={loan.isInterestOnly}
+                          onChange={e => updateLoan(loan.id, 'isInterestOnly', e.target.checked)}
+                        />
+                        <span>Interest-only payments</span>
+                        <Info text="Interest-only loans don't reduce the principal. You pay just the interest each month. Common for private lenders, hard money, and HELOCs. The full balance remains until sold or refinanced." />
+                      </label>
+                      {monthlyPmt > 0 && (
+                        <span className="loan-pmt-preview">
+                          {fmt(monthlyPmt)}/mo
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button className="add-room-btn" onClick={addLoan} style={{ marginTop: 10 }}>
+              + Add Loan
+            </button>
+
+            <div className="grid2" style={{ marginTop: 14 }}>
               <Field
                 label="Closing Costs"
                 hint="Fees paid at closing: title insurance, escrow, lender origination fee, appraisal, attorney fees, transfer taxes. Typically 2–5% of the purchase price. Get a Loan Estimate from your lender for accurate figures."
@@ -450,10 +828,27 @@ export default function App() {
                 step={0.25}
               />
             </div>
+
             <div className="calc-rows">
-              <CalcRow label="Down Payment" value={fmt(r.downPayment)} />
-              <CalcRow label={`Loan Amount · LTV ${pct(r.ltv)}`} value={fmt(r.loanAmount)} />
-              <CalcRow label="Monthly Mortgage (P&I)" value={fmt(r.monthlyMortgage)} total />
+              <CalcRow label={`Down Payment (implied) · ${pct(r.downPaymentPct)}`} value={fmt(r.downPayment)} />
+              {initialLoans.length > 1 && initialLoans.map(loan => (
+                <CalcRow
+                  key={loan.id}
+                  label={`  ${loan.name}`}
+                  value={fmt(parseFloat(loan.amount) || 0)}
+                />
+              ))}
+              <CalcRow
+                label={`${initialLoans.length > 1 ? 'Total Loans' : 'Loan Amount'} · LTV ${pct(r.ltv)}`}
+                value={fmt(r.loanAmount)}
+              />
+              {futureLoans.length > 0 && (
+                <CalcRow
+                  label={`${futureLoans.length} future loan${futureLoans.length > 1 ? 's' : ''} (not in current cash flow)`}
+                  value=""
+                />
+              )}
+              <CalcRow label="Total Monthly Debt Service" value={fmt(r.monthlyMortgage)} total />
             </div>
           </Section>
 
@@ -695,14 +1090,14 @@ export default function App() {
             />
             <MetricTile
               label="Debt Service Coverage"
-              hint="DSCR: Net Operating Income ÷ Annual mortgage payments. Measures how easily NOI covers the mortgage. 1.0 = break-even (NOI exactly covers mortgage); 1.25 = minimum most lenders require for an investment property loan; 1.5+ = strong, cushion against vacancy or expenses."
+              hint="DSCR: Net Operating Income ÷ Total monthly debt service. Measures how easily NOI covers all loan payments. 1.0 = break-even; 1.25 = minimum most lenders require; 1.5+ = strong. Reflects all month-0 loans."
               value={isFinite(r.dscr) ? r.dscr.toFixed(2) : '—'}
               sub={r.dscr >= 1.25 ? 'Lender-safe' : r.dscr >= 1.0 ? 'Break-even' : 'Negative flow'}
               q={dscrQ}
             />
             <MetricTile
               label="Break-even Occupancy"
-              hint="The minimum occupancy rate needed to cover ALL expenses including the mortgage. Lower is better — it means you can afford more vacancy before going into the red. Under 70% is excellent; 70–85% is acceptable; above 85% means very little margin of safety."
+              hint="The minimum occupancy rate needed to cover ALL expenses including debt service. Lower is better. Under 70% is excellent; 70–85% is acceptable; above 85% means very little margin of safety."
               value={pct(r.breakEvenOccupancy)}
               sub={r.breakEvenOccupancy <= 70 ? 'Low risk' : r.breakEvenOccupancy <= 85 ? 'Moderate' : 'High risk'}
               q={beoQ}
@@ -713,10 +1108,31 @@ export default function App() {
             <h3>Investment Summary</h3>
             <ResRow label="Purchase Price" value={fmt(inputs.purchasePrice)} />
             <ResRow
-              label={`Down Payment (${pct(inputs.downPaymentPct)})`}
-              hint="Your upfront equity in the property. This plus the loan equals the purchase price."
+              label={`Down Payment (${pct(r.downPaymentPct)})`}
+              hint="Purchase price minus all month-0 loan totals. This is your initial equity in the property."
               value={fmt(r.downPayment)}
             />
+            {initialLoans.length > 1 && initialLoans.map(loan => (
+              <ResRow
+                key={loan.id}
+                label={`  ${loan.name}`}
+                value={fmt(parseFloat(loan.amount) || 0)}
+              />
+            ))}
+            <ResRow
+              label={initialLoans.length > 1
+                ? `Total Loans · LTV ${pct(r.ltv)}`
+                : `Loan Amount · LTV ${pct(r.ltv)}`}
+              hint={`Loan-to-Value (LTV) is ${pct(r.ltv)} — the percentage of the purchase price financed. LTV above 80% typically requires Private Mortgage Insurance (PMI) for conventional loans.`}
+              value={fmt(r.loanAmount)}
+            />
+            {futureLoans.length > 0 && (
+              <ResRow
+                label={`Future Loans (${futureLoans.length})`}
+                hint="Loans with a Start Month > 0. These are planned future financing events (e.g., a refinance) and don't affect current cash flow or investment metrics."
+                value={`${fmt(futureLoans.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0))} total`}
+              />
+            )}
             <ResRow
               label="Closing Costs & Agent Fees"
               hint="Non-recoverable transaction costs: title, escrow, lender fees, and buyer agent commission."
@@ -731,11 +1147,6 @@ export default function App() {
               hint="All cash out of pocket to acquire the property: down payment + closing costs + agent fees + inspection + repairs. This is the denominator in your cash-on-cash return calculation."
               value={fmt(r.totalCashInvested)}
               total
-            />
-            <ResRow
-              label="Loan Amount"
-              hint={`Loan-to-Value (LTV) is ${pct(r.ltv)} — the percentage of the purchase price financed by the loan. LTV above 80% typically requires Private Mortgage Insurance (PMI).`}
-              value={`${fmt(r.loanAmount)} · LTV ${pct(r.ltv)}`}
             />
           </div>
 
@@ -799,19 +1210,41 @@ export default function App() {
 
             <ResRow
               label="Net Operating Income (NOI)"
-              hint="Effective gross income minus all operating expenses — NOT including the mortgage. NOI is the property's income independent of how it's financed. Used to calculate Cap Rate and DSCR. Positive NOI means the property covers its own costs before debt."
+              hint="Effective gross income minus all operating expenses — NOT including debt service. NOI is the property's income independent of how it's financed. Used to calculate Cap Rate and DSCR."
               value={fmt(r.noi)}
               total
             />
 
             <div className="res-divider" />
 
-            <ResRow
-              label="Mortgage (P&I)"
-              hint="Monthly principal and interest payment on your loan. Does not include property tax or insurance (those are listed separately above as operating expenses). P&I stays fixed for the life of a fixed-rate mortgage."
-              value={`−${fmt(r.monthlyMortgage)}`}
-              expense
-            />
+            {initialLoans.length > 1
+              ? initialLoans.map(loan => (
+                <ResRow
+                  key={loan.id}
+                  label={`${loan.name} (${loan.isInterestOnly ? 'IO' : 'P&I'})`}
+                  value={`−${fmt(calculateLoanPayment(loan))}`}
+                  expense
+                />
+              ))
+              : (
+                <ResRow
+                  label={`Mortgage (${initialLoans[0]?.isInterestOnly ? 'Interest Only' : 'P&I'})`}
+                  hint="Monthly principal and interest payment on your loan(s). Stays fixed for the life of a fixed-rate mortgage."
+                  value={`−${fmt(r.monthlyMortgage)}`}
+                  expense
+                />
+              )
+            }
+            {initialLoans.length > 1 && (
+              <ResRow
+                label="Total Debt Service"
+                hint="Sum of all monthly loan payments. This is your total financing cost each month."
+                value={`−${fmt(r.monthlyMortgage)}`}
+                expense
+                total
+              />
+            )}
+
             <ResRow label="NET MONTHLY CASH FLOW" value={fmt(r.monthlyCashFlow)} total big />
             <ResRow
               label="Annual Cash Flow"
@@ -824,7 +1257,7 @@ export default function App() {
             <h3>Investment Metrics</h3>
             <ResRow
               label="Annual NOI"
-              hint="Net Operating Income × 12. The property's annual income after all operating expenses, before mortgage. Standard benchmark for comparing investment properties."
+              hint="Net Operating Income × 12. The property's annual income after all operating expenses, before debt service. Standard benchmark for comparing investment properties."
               value={fmt(r.annualNOI)}
             />
             <ResRow
@@ -854,17 +1287,17 @@ export default function App() {
             />
             <ResRow
               label="Operating Expense Ratio"
-              hint="Total operating expenses ÷ Effective gross income. Measures how much of your income is consumed by expenses before the mortgage. Typical range: 35–50%. Lower is more efficient; very low OER (<30%) may mean expenses are underestimated."
+              hint="Total operating expenses ÷ Effective gross income. Measures how much of your income is consumed by expenses before debt service. Typical range: 35–50%. Lower is more efficient; very low OER (<30%) may mean expenses are underestimated."
               value={pct(r.expenseRatio)}
             />
             <ResRow
               label="Debt Service Coverage (DSCR)"
-              hint="NOI ÷ Monthly mortgage payment. Above 1.0 means NOI covers the mortgage. Most lenders require at least 1.20–1.25 DSCR to approve an investment property loan. Below 1.0 means you'll need to bring extra cash each month to cover expenses."
+              hint="NOI ÷ Total monthly debt service. Above 1.0 means NOI covers the mortgage. Most lenders require at least 1.20–1.25 DSCR to approve an investment property loan. Below 1.0 means you'll need extra cash each month."
               value={isFinite(r.dscr) ? r.dscr.toFixed(2) : '—'}
             />
             <ResRow
               label="Break-even Occupancy"
-              hint="The occupancy rate at which your income exactly covers all expenses including the mortgage. If your break-even is 80%, you start losing money when more than 20% of your units are empty. Lower = safer investment."
+              hint="The occupancy rate at which your income exactly covers all expenses including debt service. If your break-even is 80%, you start losing money when more than 20% of your units are empty. Lower = safer investment."
               value={pct(r.breakEvenOccupancy)}
             />
           </div>
@@ -874,8 +1307,14 @@ export default function App() {
               <h3>Long-term Projections</h3>
               <p className="card-note">
                 {pct(inputs.appreciationRatePct)}/yr appreciation · {pct(inputs.rentGrowthPct)}/yr rent growth ·
-                excludes tax benefits (depreciation deduction can significantly improve after-tax returns)
+                loan balance reflects all active loans at each year ·
+                excludes tax benefits
               </p>
+              {futureLoans.length > 0 && (
+                <p className="card-note" style={{ color: '#2563eb' }}>
+                  Future loan events shown as milestone rows (★ marks loan start/payoff years)
+                </p>
+              )}
               <div className="proj-wrap">
                 <table className="proj-table">
                   <thead>
@@ -888,15 +1327,26 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {r.yearlyProjections.map(p => (
-                      <tr key={p.year}>
-                        <td className="proj-yr">{p.year}</td>
-                        <td>{fmt(p.propertyValue)}</td>
-                        <td>{fmt(p.loanBalance)}</td>
-                        <td className="proj-equity">{fmt(p.equity)}</td>
-                        <td>{fmt(p.monthlyRent)}</td>
-                      </tr>
-                    ))}
+                    {r.yearlyProjections.map(p => {
+                      const isEvent = (() => {
+                        for (const loan of inputs.loans || []) {
+                          const sm = parseFloat(loan.startMonth) || 0;
+                          const pm = loan.payoffMonth != null ? parseFloat(loan.payoffMonth) : null;
+                          if (sm > 0 && sm / 12 === p.year) return true;
+                          if (pm !== null && pm / 12 === p.year) return true;
+                        }
+                        return false;
+                      })();
+                      return (
+                        <tr key={p.year} className={isEvent ? 'proj-event-row' : ''}>
+                          <td className="proj-yr">{p.year}{isEvent ? ' ★' : ''}</td>
+                          <td>{fmt(p.propertyValue)}</td>
+                          <td>{fmt(p.loanBalance)}</td>
+                          <td className="proj-equity">{fmt(p.equity)}</td>
+                          <td>{fmt(p.monthlyRent)}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -958,6 +1408,9 @@ export default function App() {
           </div>,
           document.body
         )}
+
+      {/* ── TUTORIAL MODAL ── */}
+      {tutorialOpen && <TutorialModal onClose={() => setTutorialOpen(false)} />}
 
       {/* ── TOAST ── */}
       {toast && createPortal(
