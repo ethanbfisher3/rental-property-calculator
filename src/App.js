@@ -107,17 +107,33 @@ function Info({ text }) {
   const ref = useRef(null);
 
   const onEnter = useCallback(() => {
-    if (ref.current) {
-      const rect = ref.current.getBoundingClientRect();
-      setPos({ x: rect.left + rect.width / 2, y: rect.top });
-    }
+    if (!ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    setPos({ x: rect.left + rect.width / 2, y: rect.top });
   }, []);
 
   const onLeave = useCallback(() => setPos(null), []);
 
+  const onTouchEnd = useCallback((e) => {
+    e.preventDefault();
+    setPos(p => {
+      if (p) return null;
+      if (!ref.current) return null;
+      const rect = ref.current.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top };
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!pos) return;
+    const close = () => setPos(null);
+    const timer = setTimeout(() => document.addEventListener('touchstart', close, { once: true }), 0);
+    return () => { clearTimeout(timer); document.removeEventListener('touchstart', close); };
+  }, [pos]);
+
   return (
     <>
-      <span ref={ref} className="info-icon" onMouseEnter={onEnter} onMouseLeave={onLeave}>
+      <span ref={ref} className="info-icon" onMouseEnter={onEnter} onMouseLeave={onLeave} onTouchEnd={onTouchEnd}>
         i
       </span>
       {pos &&
