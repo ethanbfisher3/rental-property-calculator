@@ -1,15 +1,15 @@
 {
   "files": {
-    "main.css": "/rental-property-calculator/static/css/main.6ad5b128.css",
+    "main.css": "/rental-property-calculator/static/css/main.fa4e06a6.css",
     "main.js": "/rental-property-calculator/static/js/main.7f228179.js",
     "static/js/453.afaf5d11.chunk.js": "/rental-property-calculator/static/js/453.afaf5d11.chunk.js",
     "index.html": "/rental-property-calculator/index.html",
-    "main.6ad5b128.css.map": "/rental-property-calculator/static/css/main.6ad5b128.css.map",
+    "main.fa4e06a6.css.map": "/rental-property-calculator/static/css/main.fa4e06a6.css.map",
     "main.7f228179.js.map": "/rental-property-calculator/static/js/main.7f228179.js.map",
     "453.afaf5d11.chunk.js.map": "/rental-property-calculator/static/js/453.afaf5d11.chunk.js.map"
   },
   "entrypoints": [
-    "static/css/main.6ad5b128.css",
+    "static/css/main.fa4e06a6.css",
     "static/js/main.7f228179.js"
   ]
 }
