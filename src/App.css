@@ -22,13 +22,17 @@
   --shadow: 0 1px 6px rgba(0,0,0,0.08);
 }
 
+html {
+  overflow-x: hidden;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
   background: var(--bg);
   color: var(--text);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  overflow-x: clip;
+  overflow-x: hidden;
 }
 
 button, input, select, textarea {
@@ -127,6 +131,7 @@ input[type="number"] {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-width: 0;
 }
 
 /* Section */
@@ -417,6 +422,7 @@ input[type="number"] {
   gap: 14px;
   position: sticky;
   top: 80px;
+  min-width: 0;
 }
 
 /* Metric tiles */
@@ -471,6 +477,7 @@ input[type="number"] {
   border-radius: var(--radius);
   padding: 16px 18px;
   box-shadow: var(--shadow);
+  min-width: 0;
 }
 
 .card h3 {
@@ -540,6 +547,7 @@ input[type="number"] {
 /* Projections table */
 .proj-wrap {
   overflow-x: auto;
+  min-width: 0;
 }
 
 .proj-table {
